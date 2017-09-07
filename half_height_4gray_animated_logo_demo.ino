@@ -100,6 +100,10 @@
 #include "ab_logo.c"
 
 Arduboy2 arduboy;
+static unsigned long next_frame = 0;
+unsigned long frame_period;
+
+#define DEFAULT_FRAME_PERIOD_MS (7572)
 
 static const uint8_t colors[4][3] = {
     {WHITE, WHITE, WHITE},
@@ -136,12 +140,7 @@ void ssd1306_select_gddram_half(const uint8_t idx)
 
 void setup() {
   arduboy.boot();
-  /*
-    I have seen grayscale demos calling setFrameRate()
-    with a value > 255 but the argument is an uint8_t
-    so anythng larger than 255 will wrap around.
-  */
-  arduboy.setFrameRate(250);
+  frame_period = DEFAULT_FRAME_PERIOD_MS;
   /*
    Set ssd1306 COM mux ratio to 32 lines and 
    display offset to 16 so the active section
@@ -221,9 +220,17 @@ void render(const uint16_t frame_idx)
 }
 
 void loop() {
-  if (!arduboy.nextFrame()) {
+  const unsigned long now = micros();
+  const unsigned long rem = next_frame - now;
+  if (rem < frame_period) {
+    if (rem > 1500) {
+      set_sleep_mode(SLEEP_MODE_IDLE);
+      sleep_mode();
+    }
     return;
   }
+  next_frame = now + frame_period;
+  arduboy.frameCount++;
 
   /*
    Alternate between drawing in the top and
