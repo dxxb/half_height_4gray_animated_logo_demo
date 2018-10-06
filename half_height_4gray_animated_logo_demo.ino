@@ -41,7 +41,7 @@
   The set display line offset command takes effect between frames
   so there is no tearing. However, the display is refreshed at
   higher frequency (twice as fast in this example because the number
-  of lines is halved). When displaying grascale, and in order to minimize
+  of lines is halved). When displaying grayscale, and in order to minimize
   flickering, the contents of GDDRAM have to be updated as fast as the
   display's frame rate. The exact frame rate is unknown, changes
   with time (part tolerances, temperature, battery voltage) and there
@@ -49,7 +49,7 @@
   control ssd1306's fosc or pace screen updates using some feedback
   from ssd1306 [1]. This in practice means that while there is no tearing,
   flickering is unavoidable to some degree but this example may still
-  be useful for demos using grascale or cutscenes.
+  be useful for demos using grayscale or cutscenes.
 
   If anyone uses this technique it would be nice to be credited for it ;-)
   unless this turns out to be something everyone knew already and I was
@@ -75,7 +75,7 @@
   exact timing the command is sent in relation to the blanking period. [2]
   
   Additionally even if the non-atomicity of the two commands execution is ignored
-  the implementaiton needs to make sure it is sending exactly one command sequence
+  the implementation needs to make sure it is sending exactly one command sequence
   per frame which requires control of ssd1306's fosc or a feedback mechanism to
   notify the MCU of the blanking period neither of which is possible on "Arduboy V1"
   production hardware. So the same issue that makes tearing unavoidable
@@ -84,15 +84,15 @@
   of the screen is rendered in the top half for a single frame before being corrected.
   The overall effect of the glitch is *at best* a ghosting image of one half of the screen
   appearing in the other half once in a while. Which is probably undesirable for
-  most applications unless the glitchy behaviour serves the theme of the application/demo
+  most applications unless the glitchy behavior serves the theme of the application/demo
   itself.
 
   [1] The relevant pins are not available on the connector.
   [2] Interestingly the fact that the set display line offset command
       takes effect one frame later than expected would help working around
-      the non-atomicity of two sequencial commands in the case when the internal
+      the non-atomicity of two sequential commands in the case when the internal
       registers they affect are latched between the reception of the two commands.
-      So this 'unexpected' (and undocumented) behaviuour of the set display
+      So this 'unexpected' (and undocumented) behavior of the set display
       line offset command may indeed be intentional.
 */
 
