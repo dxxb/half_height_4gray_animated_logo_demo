@@ -99,17 +99,24 @@
 #include <Arduboy2.h>
 #include "ab_logo.c"
 
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
+#endif
+
 Arduboy2 arduboy;
 static unsigned long next_frame = 0;
 unsigned long frame_period;
+static uint8_t demo_mode;
+static int8_t line;
+static bool button_held;
 
 #define DEFAULT_FRAME_PERIOD_MS (7572)
 
-static const uint8_t colors[4][3] = {
-    {WHITE, WHITE, WHITE},
-    {WHITE, BLACK, WHITE},
-    {BLACK, WHITE, BLACK},
-    {BLACK, BLACK, BLACK}
+static const uint8_t colors[4][2] = {
+    {WHITE, WHITE},
+    {WHITE, BLACK},
+    {BLACK, WHITE},
+    {BLACK, BLACK}
   };
 
 static inline void sendcmds(const uint8_t *cmds, uint8_t len)
@@ -123,6 +130,49 @@ static inline void sendcmds(const uint8_t *cmds, uint8_t len)
   arduboy.LCDDataMode();
 }
 
+void mode_center(void)
+{
+  const uint8_t cmds[] = {0xD6, 0x00, 0xA8, 31, 0xD3, 16};
+  sendcmds(cmds, sizeof(cmds));
+}
+
+void mode_top(void)
+{
+  const uint8_t cmds[] = {0xD6, 0x00, 0xA8, 31, 0xD3, 0x60};
+  sendcmds(cmds, sizeof(cmds));
+}
+
+void mode_bottom(void)
+{
+  const uint8_t cmds[] = {0xD6, 0x00, 0xA8, 31, 0xD3, 0x00};
+  sendcmds(cmds, sizeof(cmds));
+}
+
+void mode_anim(void)
+{
+  uint8_t pos = (arduboy.frameCount >> 1) & 0x3F;
+  if (pos >= 0x20) {
+    pos = 0x3F - pos;
+  }
+  const uint8_t cmds[] = {0xD6, 0x00, 0xA8, 31, 0xD3, pos};
+  sendcmds(cmds, sizeof(cmds));
+}
+
+void mode_zoom(void)
+{
+  const uint8_t cmds[] = {0xA8, 63, 0xD3, 0x00, 0xD6, 0x01};
+  sendcmds(cmds, sizeof(cmds));
+}
+
+typedef void (*mode_selection_fn)(void);
+static const mode_selection_fn mode_sel_fns[5] = {
+  mode_center,
+  mode_top,
+  mode_bottom,
+  mode_anim,
+  mode_zoom,
+};
+
 void ssd1306_select_gddram_half(const uint8_t idx)
 {
   /*
@@ -134,9 +184,11 @@ void ssd1306_select_gddram_half(const uint8_t idx)
    to the display's refresh rate this has to be taken into
    account.
   */
-  const uint8_t cmds[] = {0x40+(idx % 2 ? 0 : 32)};
+  const uint8_t cmds[] = {0x40+(idx ? 32 : 0)};
   sendcmds(cmds, sizeof(cmds));
 }
+
+void render(const uint16_t frame_idx, const uint8_t i_ph);
 
 void setup() {
   arduboy.boot();
@@ -146,15 +198,16 @@ void setup() {
    display offset to 16 so the active section
    of the display is centered vertically.
   */
-  const uint8_t cmds[] = {0xA8, 31, 0xD3, 16};
-  sendcmds(cmds, sizeof(cmds));
+  mode_sel_fns[demo_mode]();
   /* display top half of the controller's buffer */
   ssd1306_select_gddram_half(0);
+  render(0, 0);
+  render(0, 1);
 }
 
 static inline void test_pattern_rect(const uint8_t x, const uint8_t y,
                                      const uint8_t w, const uint8_t h,
-                                     const uint8_t colors[4][3],
+                                     const uint8_t colors[4][2],
                                      const uint8_t c_ofs, const uint8_t i_ph)
 {
   for (uint8_t i = 0; i < 3; i++) {
@@ -162,41 +215,40 @@ static inline void test_pattern_rect(const uint8_t x, const uint8_t y,
   }
 }
 
-static inline render_logo(const uint8_t y_ofs)
+static inline void render_logo(const uint8_t y_ofs)
 {
   arduboy.drawBitmap(20, y_ofs, arduboy_logo, 88, 16);
 }
 
-static inline render_moving_bar(const uint16_t frame_idx, const uint8_t y_ofs)
+static inline void render_moving_bar(const uint8_t y_ofs, const uint8_t i_ph)
 {
-  const uint8_t i_ph = frame_idx % 3;
   test_pattern_rect(16, y_ofs, 96, 2, colors, 0, i_ph);
   test_pattern_rect(16, y_ofs+2, 96, 2, colors, 1, i_ph);
   test_pattern_rect(16, y_ofs+4, 96, 2, colors, 2, i_ph);  
 }
 
-void render(const uint16_t frame_idx)
+void render(const uint16_t frame_idx, const uint8_t i_ph)
 {
   /*
    White foreground ARDUBOY logo on black backgroud with one gray
    bar bouncing up and down
   */
-  const uint8_t top_line = frame_idx % 2 ? 0 : 32;
+
+  const uint8_t top_line = i_ph ? 0 : 32;
   const uint8_t rt = (frame_idx/9)%((32-6)*2);
   const bool front = rt > (32-6);
   const uint8_t rect_rel_top = front ? (32-6)*2 - rt : rt;
-  const uint8_t i_ph = frame_idx % 3;
 
   if (front) {
-    test_pattern_rect(0, 0, 16, 3, colors, 2, i_ph);
-    test_pattern_rect(0, 3, 16, 3, colors, 0, i_ph);
-    render_moving_bar(frame_idx, top_line+rect_rel_top);
+    test_pattern_rect(0, top_line, 16, 3, colors, 2, i_ph);
+    test_pattern_rect(0, top_line+3, 16, 3, colors, 0, i_ph);
+    render_moving_bar(top_line+rect_rel_top, i_ph);
     render_logo(top_line+8);
   } else {
-    test_pattern_rect(0, 0, 16, 3, colors, 2, i_ph);
-    test_pattern_rect(0, 3, 16, 3, colors, 0, i_ph);
+    test_pattern_rect(0, top_line, 16, 3, colors, 2, i_ph);
+    test_pattern_rect(0, top_line+3, 16, 3, colors, 0, i_ph);
     render_logo(top_line+8);
-    render_moving_bar(frame_idx, top_line+rect_rel_top);
+    render_moving_bar(top_line+rect_rel_top, i_ph);
   }
 
   /*
@@ -205,7 +257,7 @@ void render(const uint16_t frame_idx)
   */
   const uint16_t half_buf_sz = 128*64/8/2;
   uint16_t ofs = 0;
-  uint8_t *ptr = arduboy.sBuffer+(frame_idx % 2 ? 0 : half_buf_sz);
+  uint8_t *ptr = arduboy.sBuffer+(i_ph ? 0 : half_buf_sz);
   SPDR = ptr[ofs];
   ptr[ofs++] = 0;
   while (ofs < half_buf_sz) {
@@ -218,6 +270,8 @@ void render(const uint16_t frame_idx)
   /* wait for the last word to shift out */
   while (!(SPSR & _BV(SPIF))) {}
 }
+
+static uint8_t three_stages;
 
 void loop() {
   const unsigned long now = micros();
@@ -241,9 +295,28 @@ void loop() {
    GDDRAM that is *not* being displayed.
   */
 
-  /* render the current half frame and upload it to the display */
-  render(arduboy.frameCount);
-  /* switch controller to display the new buffer we just uploaded */
-  ssd1306_select_gddram_half(arduboy.frameCount);
-}
+  if (++three_stages > 2) {
+    three_stages = 0;
+  }
 
+  uint8_t i_ph = three_stages ? 1 : 0;
+  if (three_stages != 2) {
+    /* render the current half frame and upload it to the display */
+    render(arduboy.frameCount, i_ph);
+
+    /* switch controller to display the new buffer we just uploaded */
+    ssd1306_select_gddram_half(i_ph);
+  }
+
+  if (arduboy.pressed(B_BUTTON)) {
+    if (!button_held) {
+      if (++demo_mode >= ARRAY_SIZE(mode_sel_fns)) {
+        demo_mode = 0;
+      }
+      button_held = true;
+    }
+  } else {
+    button_held = false;
+  }
+  mode_sel_fns[demo_mode]();
+}
