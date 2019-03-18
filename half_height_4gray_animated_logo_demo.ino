@@ -108,7 +108,8 @@ static unsigned long next_frame = 0;
 unsigned long frame_period;
 static uint8_t demo_mode;
 static int8_t line;
-static bool button_held;
+static bool button_a_held, button_b_held;
+static bool render_suspended;
 
 #define DEFAULT_FRAME_PERIOD_MS (7572)
 
@@ -302,21 +303,40 @@ void loop() {
   uint8_t i_ph = three_stages ? 1 : 0;
   if (three_stages != 2) {
     /* render the current half frame and upload it to the display */
-    render(arduboy.frameCount, i_ph);
+    if (!render_suspended) {
+      render(arduboy.frameCount, i_ph);
+    }
 
     /* switch controller to display the new buffer we just uploaded */
     ssd1306_select_gddram_half(i_ph);
   }
 
   if (arduboy.pressed(B_BUTTON)) {
-    if (!button_held) {
+    if (!button_b_held) {
       if (++demo_mode >= ARRAY_SIZE(mode_sel_fns)) {
         demo_mode = 0;
       }
-      button_held = true;
+      button_b_held = true;
     }
   } else {
-    button_held = false;
+    button_b_held = false;
   }
+
+  if (arduboy.pressed(A_BUTTON)) {
+    if (!button_a_held && three_stages == 2) {
+      render_suspended ^= true;
+      button_a_held = true;
+    }
+  } else {
+    button_a_held = false;
+  }
+
+  if (arduboy.pressed(UP_BUTTON)) {
+    frame_period += 1;
+  }
+  if (arduboy.pressed(DOWN_BUTTON)) {
+    frame_period -= 1;
+  }
+
   mode_sel_fns[demo_mode]();
 }
